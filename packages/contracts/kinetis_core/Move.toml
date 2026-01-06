@@ -4,19 +4,19 @@ version = "0.0.1"
 edition = "2024.beta"
 
 [dependencies]
-# --- AQUÍ ESTÁ LA MAGIA: override = true ---
+# 1. Sui Framework (Base)
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet", override = true }
 
-# Switchboard se queda igual
+# 2. Switchboard (Oráculos)
 Switchboard = { git = "https://github.com/switchboard-xyz/sui.git", subdir = "on_demand", rev = "testnet" }
 
-# Ika se queda igual
-ika_dwallet_2pc_mpc = { local = "../local_deps/ika/contracts/ika_dwallet_2pc_mpc" }
+# 3. Ika / dWallet (Custodia) - CORREGIDO ✅
+# Usamos el repo oficial y la subcarpeta donde viven los contratos Move
+ika_dwallet_2pc_mpc = { git = "https://github.com/dwallet-labs/ika.git", subdir = "contracts/ika_dwallet_2pc_mpc", rev = "main" }
 
 [addresses]
 kinetis_core = "0x0"
 sui = "0x2"
-# Asegúrate de mantener la dirección real de Switchboard que pusimos antes:
 switchboard = "0xdd96e1c8d6d61c4642b9b73eefb1021cc5f93f489b794bca11c81d55fcf43ce2"
 ika = "0x0"
 ika_dwallet_2pc_mpc = "0x0"
