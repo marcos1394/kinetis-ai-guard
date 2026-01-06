@@ -4,14 +4,17 @@ version = "0.0.1"
 edition = "2024.beta"
 
 [dependencies]
-# 1. Sui Framework (Base)
+# 1. Sui Framework (Tu base)
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet", override = true }
 
-# 2. Switchboard (Oráculos)
+# --- LA SOLUCIÓN AL CONFLICTO ---
+# Agregamos esto explícitamente para forzar a Switchboard a usar ESTA versión y no la vieja.
+MoveStdlib = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "framework/testnet", override = true }
+
+# 2. Switchboard (El problemático que ahora obedecerá)
 Switchboard = { git = "https://github.com/switchboard-xyz/sui.git", subdir = "on_demand", rev = "testnet" }
 
-# 3. Ika / dWallet (Custodia) - CORREGIDO ✅
-# Usamos el repo oficial y la subcarpeta donde viven los contratos Move
+# 3. Ika / dWallet (Ya funcionando)
 ika_dwallet_2pc_mpc = { git = "https://github.com/dwallet-labs/ika.git", subdir = "contracts/ika_dwallet_2pc_mpc", rev = "main" }
 
 [addresses]
@@ -20,3 +23,4 @@ sui = "0x2"
 switchboard = "0xdd96e1c8d6d61c4642b9b73eefb1021cc5f93f489b794bca11c81d55fcf43ce2"
 ika = "0x0"
 ika_dwallet_2pc_mpc = "0x0"
+std = "0x1" # Agregamos std por si acaso
