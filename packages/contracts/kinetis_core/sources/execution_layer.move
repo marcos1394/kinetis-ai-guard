@@ -5,19 +5,18 @@ module kinetis_core::execution_layer {
     use sui::event;
     
     // Importamos nuestros módulos anteriores
-    use kinetis_core::policy_registry::{AgentAdminCap};
+    use kinetis_core::policy_registry::{Self, AgentAdminCap}; // Agregamos Self para usar funciones del módulo
     use kinetis_core::policy_rules::{Self, PolicyConfig};
     use kinetis_core::financial_rules::{Self, BudgetConfig};
     
-    // --- CAMBIO: Usamos Switchboard en lugar de Pyth ---
+    // Switchboard (Correcto, ya validamos que 'aggregator' existe en 'on_demand')
     use switchboard::aggregator::{Aggregator};
 
-    // --- CAMBIO: Usamos la ruta correcta de Ika que vimos en display.move ---
+    // Ika (Asumimos que el módulo 'coordinator_inner' existe en el repo descargado)
     use ika_dwallet_2pc_mpc::coordinator_inner::{DWalletCap};
 
     // --- ERRORES ---
     const EPolicyViolation: u64 = 0;
-    // const EBudgetExceeded: u64 = 1; // Ya no se usa aquí, financial_rules se encarga
 
     // --- EVENTOS ---
     public struct ExecutionRequest has copy, drop {
@@ -25,30 +24,28 @@ module kinetis_core::execution_layer {
         chain: u8, // 0 = BTC, 1 = ETH
         target: address,
         amount_sui_equiv: u64,
-        tx_hash: vector<u8> // El hash que Ika firmó
+        tx_hash: vector<u8> 
     }
 
     // --- FUNCIONES ---
 
-    // FUNCIÓN PRINCIPAL: "Execute Transaction"
     public entry fun execute_transfer(
         // 1. Identidad
-        agent_cap: &AgentAdminCap, // Demo: Usamos AdminCap como prueba de autoridad del agente
-        _dwallet_cap: &DWalletCap,  // El permiso de firma de Ika (Prefijo _ para evitar warning si no se usa en demo)
+        agent_cap: &AgentAdminCap, 
+        _dwallet_cap: &DWalletCap, 
         
         // 2. Reglas
         policy_config: &PolicyConfig,
         budget_config: &mut BudgetConfig,
         
-        // 3. Contexto Externo (Oráculo y Reloj)
-        // CAMBIO: Ahora recibimos el Aggregator de Switchboard
+        // 3. Contexto Externo 
         aggregator: &Aggregator,
         clock: &Clock,
 
-        // 4. Parámetros de la Transacción (Lo que el Agente quiere hacer)
+        // 4. Parámetros
         target_addr: address,
-        amount_sui: u64,     // Monto estimado en moneda base
-        tx_payload: vector<u8>, // El hash de la transacción Bitcoin a firmar
+        amount_sui: u64,     
+        tx_payload: vector<u8>, 
         
         _ctx: &mut TxContext
     ) {
@@ -58,7 +55,6 @@ module kinetis_core::execution_layer {
         };
 
         // B. VERIFICACIÓN DE PRESUPUESTO (El Contador)
-        // CAMBIO: Pasamos el aggregator a la regla financiera
         financial_rules::check_and_record_spend(
             budget_config,
             amount_sui,
@@ -66,12 +62,11 @@ module kinetis_core::execution_layer {
             clock
         );
 
-        // C. EJECUCIÓN (La Firma)
-        // Aquí iría la llamada real a Ika para firmar.
-        // Por ahora emitimos el evento de éxito.
-        
+        // C. LOGGING (Corregido para obtener el ID real del Agente)
+        let real_agent_id = policy_registry::admin_cap_agent_id(agent_cap);
+
         event::emit(ExecutionRequest {
-            agent_id: object::id(agent_cap), 
+            agent_id: real_agent_id, 
             chain: 0, // Hardcoded BTC para demo
             target: target_addr,
             amount_sui_equiv: amount_sui,
