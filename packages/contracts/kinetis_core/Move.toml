@@ -4,23 +4,26 @@ version = "0.0.1"
 edition = "2024.beta"
 
 [dependencies]
-# 1. Sui Framework (Tu base)
+# 1. Sui Framework (Base)
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet", override = true }
 
-# --- LA SOLUCIÓN AL CONFLICTO ---
-# Agregamos esto explícitamente para forzar a Switchboard a usar ESTA versión y no la vieja.
+# 2. Solución al conflicto de StdLib (Esto lo mantuvimos del paso anterior porque funcionó)
 MoveStdlib = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "framework/testnet", override = true }
 
-# 2. Switchboard (El problemático que ahora obedecerá)
+# 3. Switchboard
 Switchboard = { git = "https://github.com/switchboard-xyz/sui.git", subdir = "on_demand", rev = "testnet" }
 
-# 3. Ika / dWallet (Ya funcionando)
+# 4. Ika / dWallet
 ika_dwallet_2pc_mpc = { git = "https://github.com/dwallet-labs/ika.git", subdir = "contracts/ika_dwallet_2pc_mpc", rev = "main" }
 
 [addresses]
 kinetis_core = "0x0"
 sui = "0x2"
-switchboard = "0xdd96e1c8d6d61c4642b9b73eefb1021cc5f93f489b794bca11c81d55fcf43ce2"
+std = "0x1"
 ika = "0x0"
 ika_dwallet_2pc_mpc = "0x0"
-std = "0x1" # Agregamos std por si acaso
+
+# --- CAMBIO CRÍTICO AQUÍ ---
+# Borramos 'switchboard = "0x..."' porque causaba conflicto con la dependencia.
+# Si necesitas la dirección, usa este nombre alternativo para que no choque:
+switchboard_address = "0xdd96e1c8d6d61c4642b9b73eefb1021cc5f93f489b794bca11c81d55fcf43ce2"
