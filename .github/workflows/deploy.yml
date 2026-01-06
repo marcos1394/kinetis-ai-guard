@@ -3,15 +3,15 @@ name: Deploy Kinetis System
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub si quieres
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la web de GitHub
 
 permissions:
   contents: read
-  id-token: write # NECESARIO para que Google confíe en GitHub
+  id-token: write # OBLIGATORIO: Permite pedir el token a Google para la Federación
 
 jobs:
   deploy:
-    name: Wake & Deploy
+    name: Wake, Sync & Build
     runs-on: ubuntu-latest
     
     steps:
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # 2. Autenticación Segura con Google (Sin llaves JSON)
+      # 2. Autenticación Segura con Google (Workload Identity Federation)
       - id: 'auth'
         name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v1'
@@ -27,7 +27,7 @@ jobs:
           workload_identity_provider: '${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}'
           service_account: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
 
-      # 3. Preparar herramientas de Google
+      # 3. Preparar herramientas de Google Cloud CLI
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v1'
 
@@ -35,12 +35,13 @@ jobs:
       - name: Wake up Kinetis Node
         run: |
           echo "🔍 Verificando estado de la instancia..."
+          # Ajusta la zona si usaste otra diferente a us-central1-a
           STATUS=$(gcloud compute instances describe kinetis-node --zone=us-central1-a --format="value(status)")
           
           if [ "$STATUS" = "TERMINATED" ]; then
             echo "💤 La instancia está durmiendo. Encendiendo para trabajar..."
             gcloud compute instances start kinetis-node --zone=us-central1-a --project=kinetis-security
-            echo "⏳ Esperando 45 segundos para que el SSH esté listo..."
+            echo "⏳ Esperando 45 segundos para que el sistema operativo inicie..."
             sleep 45
           else
             echo "⚡ La instancia ya está activa. Procediendo..."
@@ -55,32 +56,43 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            # Detener el script si hay errores
+            # Detener el script inmediatamente si algún comando falla
             set -e
             
             echo "📂 Preparando directorio de trabajo..."
+            # Nos aseguramos de estar en la carpeta raíz del usuario
             mkdir -p ~/kinetis-ai-guard
             cd ~/kinetis-ai-guard
             
-            # Lógica de Git: Clonar si es nuevo, Pull si ya existe
+            # Lógica Inteligente de Git
             if [ ! -d ".git" ]; then
               echo "🚀 Clonando repositorio por primera vez..."
+              # Reemplaza con tu URL si fuera privada, pero con SSH keys ya configuradas funciona
               git clone https://github.com/marcos1394/kinetis-ai-guard.git .
             else
               echo "🔄 Actualizando código fuente..."
               git pull origin main
             fi
             
-            # AQUÍ AGREGAMOS VALOR PROFESIONAL
-            # Verificamos si Sui está instalado para intentar compilar
+            # --- FASE DE COMPILACIÓN (Monorepo & Sui) ---
+            
+            echo "🔍 Verificando entorno de compilación..."
+            
+            # Buscamos 'sui' en el PATH global (/usr/local/bin)
             if command -v sui &> /dev/null; then
-                echo "🛠️  Sui detectado. Compilando contratos para verificar integridad..."
-                cd contracts/kinetis_core
-                # sui move build # (Descomenta esto cuando hayamos instalado Sui en la VM)
-                echo "✅ Compilación exitosa (Simulada por ahora)."
+                echo "🛠️  Sui detectado. Iniciando compilación de contratos..."
+                
+                # Entramos a la carpeta específica del paquete de contratos (Estructura Monorepo)
+                cd packages/contracts/kinetis_core
+                
+                # Ejecutamos la compilación real. Si hay errores de sintaxis en Move, esto fallará y te avisará.
+                sui move build
+                
+                echo "✅ BUILD EXITOSO: Los contratos son válidos."
             else
-                echo "⚠️  Sui no está instalado en la VM todavía. Solo se actualizaron los archivos."
-                echo "ℹ️  Próximo paso: Instalar binarios de Sui en el servidor."
+                echo "❌ ERROR CRÍTICO: El binario 'sui' no se encuentra."
+                echo "Asegúrate de haber ejecutado: sudo mv ~/.sui/bin/sui /usr/local/bin/"
+                exit 1 # Esto hace que GitHub marque el deploy como FALLIDO (Rojo)
             fi
             
-            echo "🎉 Despliegue completado exitosamente."
+            echo "🎉 Despliegue y Verificación completados."
