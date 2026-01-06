@@ -1,37 +1,33 @@
 module kinetis_core::policy_registry {
     use std::string::{Self, String};
+    use std::vector; // <--- AGREGADO: Necesario para vector::length
     use sui::event;
     use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
 
-    // --- ERRORES (Código de Calidad) ---
-    // Definimos errores constantes para facilitar el debugging
+    // --- ERRORES ---
     const ENameTooLong: u64 = 0;
 
     // --- OBJETOS ---
 
-    // 1. El Perfil del Agente (Agent Identity)
-    // Este objeto representa al "Bot" en la blockchain.
-   public struct AgentProfile has key, store {
+    // 1. El Perfil del Agente (Identidad Pública)
+    public struct AgentProfile has key, store {
         id: UID,
-        name: String,           // Ej: "Kinetis Trader V1"
-        ai_model_version: String, // INNOVACIÓN: ¿Qué cerebro usa? Ej: "GPT-4o"
-        human_owner: address,   // El jefe (tú)
-        is_paused: bool,        // Botón de pánico
-        created_at: u64,        // Timestamp (aprox por epoch)
+        name: String,
+        ai_model_version: String,
+        human_owner: address,   // Informativo, el control real es la Cap
+        is_paused: bool,        
+        created_at: u64,
     }
 
-    // 2. La Llave de Administración (Admin Cap)
-    // Quien tenga este objeto controla al Agente.
-    // Usamos el patrón "Capability" de Sui para seguridad máxima.
-   public struct AgentAdminCap has key, store {
+    // 2. La Llave de Administración (Control Privado)
+    public struct AgentAdminCap has key, store {
         id: UID,
-        for_agent: ID, // Vincula esta llave a un perfil específico
+        for_agent: ID, // ID del AgentProfile vinculado
     }
 
     // --- EVENTOS ---
-    // Útiles para que nuestro Frontend se entere de lo que pasa
     public struct AgentRegistered has copy, drop {
         agent_id: ID,
         owner: address,
@@ -40,23 +36,21 @@ module kinetis_core::policy_registry {
 
     // --- FUNCIONES ---
 
-    // Constructor: Crea un nuevo Agente
     public entry fun register_agent(
         name_bytes: vector<u8>,
         model_bytes: vector<u8>,
         ctx: &mut TxContext
     ) {
-        // 1. Validación de inputs
-        // Limitamos el nombre a 64 caracteres para ahorrar almacenamiento
+        // 1. Validación
         assert!(vector::length(&name_bytes) <= 64, ENameTooLong);
 
         let sender = tx_context::sender(ctx);
 
-        // 2. Crear el UID del Agente
+        // 2. Crear UID y ID
         let agent_uid = object::new(ctx);
         let agent_id = object::uid_to_inner(&agent_uid);
 
-        // 3. Instanciar el Objeto
+        // 3. Instanciar Perfil
         let agent = AgentProfile {
             id: agent_uid,
             name: string::utf8(name_bytes),
@@ -66,23 +60,43 @@ module kinetis_core::policy_registry {
             created_at: tx_context::epoch(ctx),
         };
 
-        // 4. Crear la Capability (Llave) para el dueño
+        // 4. Crear Capability (Llave Maestra)
         let admin_cap = AgentAdminCap {
             id: object::new(ctx),
             for_agent: agent_id,
         };
 
-        // 5. Emitir evento
+        // 5. Evento
         event::emit(AgentRegistered {
             agent_id,
             owner: sender,
             name: string::utf8(name_bytes)
         });
 
-        // 6. Transferir propiedad
-        // El perfil es público (shared) o del usuario? 
-        // Para el MVP, se lo damos al usuario, luego lo haremos SharedObject para que el bot lo lea.
-        transfer::public_transfer(agent, sender);
+        // 6. TRANSFERENCIAS (Ajuste Arquitectónico)
+        
+        // Hacemos el Perfil COMPARTIDO para que Kinetis Node pueda leerlo 
+        // sin necesitar la firma del humano a cada segundo.
+        transfer::share_object(agent);
+
+        // La Llave de Admin sí se va al bolsillo del usuario.
         transfer::public_transfer(admin_cap, sender);
+    }
+
+    // --- GETTERS (Cruciales para interoperabilidad) ---
+
+    // Permite que otros módulos (como policy_rules) sepan de quién es esta llave
+    public fun admin_cap_agent_id(cap: &AgentAdminCap): ID {
+        cap.for_agent
+    }
+
+    // Permite leer el ID de un perfil
+    public fun profile_id(profile: &AgentProfile): ID {
+        object::id(profile)
+    }
+
+    // Verifica si el agente está pausado
+    public fun is_paused(profile: &AgentProfile): bool {
+        profile.is_paused
     }
 }
