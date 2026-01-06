@@ -1,0 +1,18 @@
+# --- Seguridad (NO TOCAR) ---
+kinetis_key
+kinetis_key.pub
+*.key
+*.pem
+.env
+.env.local
+
+# --- Dependencias y Build ---
+node_modules/
+dist/
+build/
+.move/
+Move.lock
+
+# --- Sistema ---
+.DS_Store
+.vscode/

@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@ika.xyz/sdk": "file:/home/user/kinetis-ai-guard/kinetis-ai-guard/local_sdks/ika",
+    "@mysten/bcs": "^1.9.2",
+    "@mysten/sui": "^1.44.0",
+    "@switchboard-xyz/sui-sdk": "^0.1.10",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3"
+  }
+}
