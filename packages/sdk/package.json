@@ -1,8 +1,18 @@
 {
+  "name": "@kinetis/sdk",
+  "version": "1.0.0",
+  "type": "module", 
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
   "dependencies": {
-    "@ika.xyz/sdk": "file:/home/user/kinetis-ai-guard/kinetis-ai-guard/local_sdks/ika",
+    "@ika.xyz/sdk": "^0.2.7",
     "@mysten/bcs": "^1.9.2",
     "@mysten/sui": "^1.44.0",
+    "@switchboard-xyz/common": "^5.5.2",
     "@switchboard-xyz/sui-sdk": "^0.1.10",
     "dotenv": "^17.2.3"
   },
