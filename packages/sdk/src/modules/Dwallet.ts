@@ -79,7 +79,6 @@ export class DWalletModule {
             sessionId,      // bytesToHash
             userAddress     // senderAddress
         );
-
         // 4. Construcción de Transacción
         console.log("📝 Construyendo transacción en Sui...");
         const tx = new Transaction();
@@ -92,18 +91,32 @@ export class DWalletModule {
         const sessionIdentifier = ikaTx.createSessionIdentifier();
         const networkEncryptionKey = await this.ikaClient.getLatestNetworkEncryptionKey();
         
-        const ikaCoinId = await this.findIkaCoin(userAddress);
-        if (!ikaCoinId) throw new Error("❌ Error: No tienes tokens IKA. Son necesarios para crear la dWallet.");
+        // --- INICIO DE CORRECCIONES ---
 
+        // A. Preparar IKA Coin
+        // En lugar de enviar la moneda entera (que podría fallar si es muy grande),
+        // es mejor práctica si Ika consume la moneda. Pero por ahora, usaremos el objeto directo.
+        const ikaCoinId = await this.findIkaCoin(userAddress);
+        if (!ikaCoinId) throw new Error("❌ Error: No tienes tokens IKA.");
+        
+        // B. Preparar SUI Coin (CORRECCIÓN DEL ERROR TypeMismatch)
+        // El error ocurría porque 'splitCoins' devuelve un resultado que debe ser desestructurado
+        // para obtener la referencia exacta a la nueva moneda creada.
+        // Además, usamos tx.pure.u64 para asegurar que el número sea entendido como u64 por Move.
+        const [suiFeeCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(50_000_000)]); // 0.05 SUI
+
+        // Llamada corregida
         const dwalletCap = await ikaTx.requestDWalletDKG({
             dkgRequestInput: dkgRequestInput,
             sessionIdentifier: sessionIdentifier,
             dwalletNetworkEncryptionKeyId: networkEncryptionKey.id,
             curve: curve, 
-            ikaCoin: tx.object(ikaCoinId), 
-            suiCoin: tx.splitCoins(tx.gas, [50000000]), 
+            ikaCoin: tx.object(ikaCoinId), // Pasamos la referencia al objeto IKA
+            suiCoin: suiFeeCoin,           // Pasamos la moneda SUI recién creada y separada
         });
 
+        // --- FIN DE CORRECCIONES ---
+        
         tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
 
         // 5. Ejecución
