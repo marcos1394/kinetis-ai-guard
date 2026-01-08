@@ -7,7 +7,7 @@ import {
     UserShareEncryptionKeys, 
     Curve, 
     getNetworkConfig, 
-    prepareDKG,
+    prepareDKGAsync,
     createRandomSessionIdentifier,
     publicKeyFromDWalletOutput 
 } from '@ika.xyz/sdk';
@@ -65,19 +65,19 @@ export class DWalletModule {
 
         // 3. Preparación DKG
         console.log(`📥 Obteniendo parámetros del protocolo para ${curveName}...`);
-        const protocolParams = await this.ikaClient.getProtocolPublicParameters(undefined, curve);
+        
 
         const sessionId = createRandomSessionIdentifier();
 
         console.log("⚙️  Generando pruebas Zero-Knowledge (WASM)...");
-        const encryptionKeyBytes = new Uint8Array(userKeys.getPublicKey().toSuiBytes().slice(1));
-
-        const dkgRequestInput = await prepareDKG(
-            protocolParams,
+        // CAMBIO CRÍTICO: Usamos prepareDKGAsync
+        // Esta función se encarga de buscar los params y formatear las llaves correctamente
+        const dkgRequestInput = await prepareDKGAsync(
+            this.ikaClient, // Le pasamos el cliente para que él busque los params
             curve,
-            encryptionKeyBytes,
-            sessionId,
-            userAddress
+            userKeys,       // Le pasamos el objeto completo, no bytes crudos
+            sessionId,      // bytesToHash
+            userAddress     // senderAddress
         );
 
         // 4. Construcción de Transacción
