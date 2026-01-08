@@ -1,14 +1,14 @@
 import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
-import { SUI_CLOCK_OBJECT_ID } from '../utils/constants';
+// Nota: Ya no importamos SUI_CLOCK_OBJECT_ID ni REGISTRY_ID porque tu contrato no los usa.
 
-// Interfaz para que TypeScript sepa qué devuelve tu Agente
+// Definición de datos del Agente
 export interface AgentData {
     id: string;
     name: string;
     model: string;
     paused: boolean;
-    ownerCapId: string; // Guardamos también el ID de la llave de admin
+    ownerCapId: string;
 }
 
 export class RegistryModule {
@@ -22,19 +22,21 @@ export class RegistryModule {
 
     /**
      * CREAR (WRITE): Construye la transacción para registrar un nuevo Agente.
-     * @param name - Nombre del Agente (ej. "Kinetis Trader V1")
-     * @param model - Modelo de IA (ej. "GPT-4")
+     * Coincide con: public entry fun register_agent(name_bytes, model_bytes, ctx)
      */
     createAgentTransaction(name: string, model: string): Transaction {
         const tx = new Transaction();
 
-        // Llamamos a policy_registry::register_agent
         tx.moveCall({
             target: `${this.packageId}::policy_registry::register_agent`,
             arguments: [
-                tx.pure.string(name),       // Nombre
-                tx.pure.string(model),      // Modelo
-                tx.object(SUI_CLOCK_OBJECT_ID) // Clock
+                // 1. name_bytes: vector<u8> (El SDK convierte string a vector<u8> automáticamente)
+                tx.pure.string(name),       
+                
+                // 2. model_bytes: vector<u8>
+                tx.pure.string(model)
+                
+                // 3. ctx: &mut TxContext (Inyectado automáticamente por Sui, NO se envía)
             ],
         });
 
@@ -43,14 +45,14 @@ export class RegistryModule {
 
     /**
      * CONSULTAR (READ): Busca todos los agentes que controla una dirección.
-     * Lógica mejorada: Busca los 'AgentAdminCap' y obtiene los perfiles asociados.
+     * Estrategia: Buscar las llaves 'AgentAdminCap' y ver qué agente controlan.
      */
     async getAgentsByOwner(ownerAddress: string): Promise<AgentData[]> {
         // 1. Buscar las llaves de administrador (AgentAdminCap)
-        // Estas SIEMPRE son propiedad del usuario.
         const capsResponse = await this.client.getOwnedObjects({
             owner: ownerAddress,
             filter: {
+                // Filtramos por el tipo de Struct de la llave administrativa
                 StructType: `${this.packageId}::policy_registry::AgentAdminCap`,
             },
             options: { showContent: true },
@@ -58,15 +60,17 @@ export class RegistryModule {
 
         const agents: AgentData[] = [];
 
-        // 2. Iterar sobre las caps y obtener el ID del agente que controlan
+        // 2. Iterar sobre las caps
         for (const capObj of capsResponse.data) {
             const content = capObj.data?.content as any;
             if (!content || !content.fields) continue;
 
             const adminCapId = capObj.data?.objectId;
-            const agentId = content.fields.for_agent; // El campo que vincula Cap -> Perfil
+            // En tu contrato: struct AgentAdminCap { ..., for_agent: ID }
+            const agentId = content.fields.for_agent; 
 
-            // 3. Consultar los detalles del Perfil del Agente (que es un objeto compartido)
+            // 3. Consultar el Perfil Público (AgentProfile)
+            // En tu contrato: transfer::share_object(agent); -> Es un objeto compartido.
             const profileObj = await this.client.getObject({
                 id: agentId,
                 options: { showContent: true }
@@ -105,7 +109,7 @@ export class RegistryModule {
                 name: fields.name,
                 model: fields.ai_model_version,
                 paused: fields.is_paused,
-                ownerCapId: "UNKNOWN" // Si consultamos directo por ID, no sabemos cuál es la Cap
+                ownerCapId: "UNKNOWN" // Sin buscar la cap, no sabemos cuál es
             };
         } catch (e) {
             console.error("Error fetching agent:", e);
