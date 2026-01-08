@@ -3,7 +3,8 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 
 // --- MÓDULOS DE INFRAESTRUCTURA Y REGLAS ---
-import { RegistryModule, AgentData } from '../modules/Registry'; // Importamos AgentData
+import { RegistryModule } from '../modules/Registry'; // Importamos AgentData
+import type { AgentData } from '../modules/Registry'; // <--- ¡La clave es 'type'!
 import { PoliciesModule } from '../modules/Policies';
 import { FinancialModule } from '../modules/Financial';
 import { OracleSetupModule } from '../modules/OracleSetup';
