@@ -1,109 +1,97 @@
-import { SwitchboardClient, Aggregator } from "@switchboard-xyz/sui-sdk";
-import { CrossbarClient, OracleJob } from "@switchboard-xyz/common";
-import { SuiClient } from "@mysten/sui/client";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { Transaction } from "@mysten/sui/transactions";
+import { SuiClient } from '@mysten/sui/client';
+import { Aggregator, SwitchboardClient } from '@switchboard-xyz/sui-sdk'; // <--- Importamos SwitchboardClient
+import { SWITCHBOARD_SUI_USD_AGGREGATOR_ID } from '../utils/constants';
 
-// Queue de Testnet de Switchboard (Estable)
-const SWITCHBOARD_TESTNET_QUEUE = "0x78902506b3a0429a3977c07da33246eb74a62df8ce429739f8299ba420d2d79d";
-
+/**
+ * Módulo de Administración de Oráculos.
+ * Verifica la salud de los feeds oficiales.
+ */
 export class OracleSetupModule {
     private client: SuiClient;
-    private switchboard: SwitchboardClient;
-    private crossbar: CrossbarClient;
 
     constructor(client: SuiClient) {
         this.client = client;
-        this.switchboard = new SwitchboardClient(client);
-        // Cliente para guardar la definición del trabajo (Job) off-chain
-        this.crossbar = new CrossbarClient("https://crossbar.switchboard.xyz");
     }
 
     /**
-     * Crea un nuevo Feed de Precios en la blockchain.
-     * @param signerKeypair - Las credenciales del Admin que pagará el gas.
-     * @param pairName - Nombre del par (ej. "SUI/USDT").
-     * @param binanceSymbol - Símbolo en Binance API (ej. "SUIUSDT").
+     * Verifica la salud del Oráculo Oficial SUI/USD.
      */
-    async createPriceFeed(
-        signerKeypair: Ed25519Keypair,
-        pairName: string,
-        binanceSymbol: string
-    ): Promise<string | null> {
-        console.log(`🛠️ Configurando oráculo para ${pairName}...`);
-
-        const userAddress = signerKeypair.toSuiAddress();
-
-        // 1. Definir el Trabajo (Job) - Tarea: Leer de Binance y parsear precio
-        const jobs: OracleJob[] = [
-            OracleJob.fromObject({
-                tasks: [
-                    {
-                        httpTask: {
-                            url: `https://api.binance.com/api/v3/ticker/price?symbol=${binanceSymbol}`,
-                        },
-                    },
-                    {
-                        jsonParseTask: {
-                            path: "$.price",
-                        },
-                    },
-                ],
-            }),
-        ];
-
+    async checkOracleHealth(): Promise<{ 
+        isHealthy: boolean; 
+        price?: number; 
+        lastUpdate?: Date; 
+        error?: string 
+    }> {
         try {
-            // 2. Guardar definición en Crossbar (IPFS/Storage de Switchboard)
-            console.log("💾 Subiendo definición del Job a Crossbar...");
-            const { feedHash } = await this.crossbar.store(SWITCHBOARD_TESTNET_QUEUE, jobs);
-            console.log(`📝 Feed Hash: ${feedHash}`);
+            console.log(`📡 Conectando a Oráculo Switchboard: ${SWITCHBOARD_SUI_USD_AGGREGATOR_ID}`);
 
-            // 3. Preparar Transacción de Inicialización en Sui
-            const tx = new Transaction();
-            
-            await Aggregator.initTx(this.switchboard, tx, {
-                feedHash,
-                name: `Kinetis ${pairName}`,
-                authority: userAddress, // Tú eres el dueño del feed
-                minSampleSize: 1,
-                maxStalenessSeconds: 60,
-                maxVariance: 1e9,
-                minResponses: 1,
-            });
+            // 1. [CORRECCIÓN] Envolvemos el SuiClient en un SwitchboardClient
+            const sbClient = new SwitchboardClient(this.client);
 
-            // 4. Firmar y Ejecutar
-            console.log("🚀 Creando objeto Aggregator en cadena...");
-            const res = await this.client.signAndExecuteTransaction({
-                signer: signerKeypair,
-                transaction: tx,
-                options: {
-                    showEffects: true,
-                    showObjectChanges: true,
-                },
-            });
+            // 2. Instanciamos el Agregador usando el sbClient
+            const aggregator = new Aggregator(sbClient, SWITCHBOARD_SUI_USD_AGGREGATOR_ID);
 
-            // 5. Esperar confirmación
-            await this.client.waitForTransaction({ digest: res.digest });
+            // 3. Cargamos la data cruda (Raw Move Struct)
+            const result = await aggregator.loadData();
 
-            // 6. Extraer el ID del nuevo Aggregator creado
-            let aggregatorId = null;
-            res.objectChanges?.forEach((change) => {
-                if (change.type === 'created' && change.objectType.includes('aggregator::Aggregator')) {
-                    aggregatorId = change.objectId;
-                }
-            });
+            // 4. [CORRECCIÓN] Parseo Manual del "Switchboard Decimal"
+            // La data viene como 'latest_result' (snake_case) y es un objeto complejo.
+            // Usamos 'any' temporalmente para saltar el chequeo estricto de tipos de TS
+            // ya que la librería a veces tiene discrepancias en los tipos exportados.
+            const rawData = result as any;
 
-            if (aggregatorId) {
-                console.log(`✅ Oráculo Creado Exitosamente: ${aggregatorId}`);
-                return aggregatorId;
-            } else {
-                console.warn("⚠️ Transacción exitosa pero no se encontró el ID del Aggregator en los logs.");
-                return null;
+            // Accedemos a las propiedades snake_case que vienen de la blockchain
+            const latestResult = rawData.latest_result || rawData.latestResult;
+            const latestTimestamp = rawData.latest_timestamp || rawData.latestTimestamp;
+
+            if (!latestResult) {
+                return { isHealthy: false, error: "Oráculo vacío (Sin resultados)" };
             }
 
-        } catch (error) {
-            console.error(`❌ Error creando el oráculo: ${error}`);
-            throw error;
+            // 5. Conversión Matemática: (value / 10^scale) * (neg ? -1 : 1)
+            const value = Number(latestResult.value);
+            const scale = Number(latestResult.scale);
+            const neg = latestResult.neg;
+
+            let price = value / Math.pow(10, scale);
+            if (neg) price = price * -1;
+
+            // Conversión de Timestamp
+            const timestampMs = Number(latestTimestamp) * 1000;
+            const lastUpdateDate = new Date(timestampMs);
+
+            // --- Validaciones de Negocio ---
+
+            // A. Defensa: Precio Negativo o Cero
+            if (price <= 0) {
+                return { isHealthy: false, price, error: "CRITICAL: Precio de Oráculo inválido (<= 0)" };
+            }
+
+            // B. Defensa: Datos Obsoletos (Stale Data > 10 min)
+            const now = Date.now();
+            const timeDiff = now - timestampMs;
+            const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+
+            if (timeDiff > STALE_THRESHOLD_MS) {
+                console.warn(`⚠️ ALERTA: Datos de oráculo antiguos. Última act: ${lastUpdateDate.toISOString()}`);
+            }
+
+            return { 
+                isHealthy: true, 
+                price: price, 
+                lastUpdate: lastUpdateDate 
+            };
+
+        } catch (error: any) {
+            console.error("❌ Error leyendo Switchboard:", error);
+            return { 
+                isHealthy: false, 
+                error: error.message || "Error de conexión con el Oráculo" 
+            };
         }
+    }
+
+    getAggregatorId(): string {
+        return SWITCHBOARD_SUI_USD_AGGREGATOR_ID;
     }
 }

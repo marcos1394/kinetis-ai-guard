@@ -3,7 +3,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import { SUI_CLOCK_OBJECT_ID } from '../utils/constants';
 
 // Interfaz para que TypeScript sepa qué devuelve tu Agente
-export interface AgentProfileData {
+export interface AgentData {
     id: string;
     name: string;
     model: string;
@@ -45,7 +45,7 @@ export class RegistryModule {
      * CONSULTAR (READ): Busca todos los agentes que controla una dirección.
      * Lógica mejorada: Busca los 'AgentAdminCap' y obtiene los perfiles asociados.
      */
-    async getAgentsByOwner(ownerAddress: string): Promise<AgentProfileData[]> {
+    async getAgentsByOwner(ownerAddress: string): Promise<AgentData[]> {
         // 1. Buscar las llaves de administrador (AgentAdminCap)
         // Estas SIEMPRE son propiedad del usuario.
         const capsResponse = await this.client.getOwnedObjects({
@@ -56,7 +56,7 @@ export class RegistryModule {
             options: { showContent: true },
         });
 
-        const agents: AgentProfileData[] = [];
+        const agents: AgentData[] = [];
 
         // 2. Iterar sobre las caps y obtener el ID del agente que controlan
         for (const capObj of capsResponse.data) {
@@ -90,7 +90,7 @@ export class RegistryModule {
     /**
      * Consulta un agente específico por su ID
      */
-    async getAgentById(agentId: string): Promise<AgentProfileData | null> {
+    async getAgentById(agentId: string): Promise<AgentData | null> {
         try {
             const obj = await this.client.getObject({
                 id: agentId,
