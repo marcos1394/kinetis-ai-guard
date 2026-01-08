@@ -35,7 +35,9 @@ async function runTest() {
 
         // 2. Inicializar SDK
         console.log("\n[1/4] 🔌 Inicializando SDK...");
-        const sdk = new KinetisClient({ network: 'testnet' });
+        const sdk = new KinetisClient({ network: 'testnet',
+            packageId: '0x785d2a18f8211d2baf25bf856cbe01a2c11addd27fab2f5ff2d4f9853d4e9b49'
+         });
         
         await sdk.init();
         console.log(`✅ SDK Conectado. Package ID: ${sdk.packageId}`);
