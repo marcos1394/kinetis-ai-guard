@@ -13,7 +13,7 @@ module kinetis_core::financial_rules {
     // --- ERRORES ---
     const EPriceStale: u64 = 1; 
     const EPriceNegative: u64 = 2;
-    const EAmountMismatch: u64 = 3; // Error si intentan aprobar una solicitud alterada
+    const EAmountMismatch: u64 = 3; 
 
     // --- OBJETOS ---
     
@@ -25,23 +25,24 @@ module kinetis_core::financial_rules {
         last_reset_time: u64, 
     }
 
-    // [NUEVO] Objeto que representa una transacción detenida por exceder presupuesto
-    // Se envía al Admin para que la revise.
+    // [MODIFICADO] Objeto de solicitud pendiente.
+    // Ahora incluye 'inference_hash' para auditoría forense.
     public struct SpendingRequest has key, store {
         id: UID,
         agent_id: ID,
         amount_sui: u64,
         amount_usd_estimated: u64,
+        inference_hash: vector<u8>, // <--- NUEVO: El "ADN" del pensamiento de la IA
         timestamp: u64
     }
 
-    // [NUEVO] "Hot Potato" (Sin key/store). 
-    // Es una prueba efímera de que el Admin aprobó el gasto.
-    // Debe consumirse inmediatamente en la misma transacción.
+    // [MODIFICADO] Hot Potato de aprobación.
+    // Vincula la aprobación manual con la inferencia original.
     public struct FinanceApproval {
         agent_id: ID,
         amount_sui: u64,
-        amount_usd: u64
+        amount_usd: u64,
+        inference_hash: vector<u8> // <--- NUEVO
     }
 
     // --- EVENTOS ---
@@ -57,12 +58,13 @@ module kinetis_core::financial_rules {
         amount_usd: u64
     }
 
-    // [NUEVO] Evento para notificar al Admin
+    // [MODIFICADO] Evento para notificar al Admin
     public struct ApprovalNeeded has copy, drop {
         request_id: ID,
         agent_id: ID,
         amount_sui: u64,
-        amount_usd: u64
+        amount_usd: u64,
+        inference_hash: vector<u8> // <--- NUEVO: Visible en el Dashboard
     }
 
     // --- FUNCIONES ---
@@ -87,16 +89,16 @@ module kinetis_core::financial_rules {
 
     /**
      * Función principal llamada por el BOT.
-     * Retorna TRUE si puede gastar.
-     * Retorna FALSE si excede el límite (y crea una SpendingRequest).
+     * [MODIFICADO] Ahora recibe 'inference_hash'.
      */
     public fun check_and_record_spend(
         budget: &mut BudgetConfig,
         amount_sui: u64, 
+        inference_hash: vector<u8>, // <--- NUEVO ARGUMENTO
         aggregator: &Aggregator, 
         clock: &Clock,
         ctx: &mut TxContext
-    ): bool { // <-- CAMBIO: Ahora retorna bool
+    ): bool {
         
         // 1. Reset diario
         let now = clock::timestamp_ms(clock);
@@ -123,29 +125,28 @@ module kinetis_core::financial_rules {
             
             return true // Ejecutar transacción
         } else {
-            // B. EXCEDE LÍMITE: Human-in-the-Loop
-            // No abortamos. Creamos una solicitud y la enviamos al dueño.
+            // B. EXCEDE LÍMITE: Human-in-the-Loop + Proof of Inference
+            // Guardamos la solicitud CON el hash de la inferencia
             let request = SpendingRequest {
                 id: object::new(ctx),
                 agent_id: budget.agent_id,
                 amount_sui,
                 amount_usd_estimated: usd_value,
+                inference_hash: inference_hash, // <--- Guardamos la evidencia
                 timestamp: now
             };
 
             let req_id = object::id(&request);
             
-            // Transferimos la solicitud al Admin (quien firmó la tx del bot o es el dueño)
-            // En este caso, se la enviamos al sender (que debería ser el agente, 
-            // pero el agente debería reenviarla o el sistema indexarla).
-            // Estrategia Kinetis: Se envía al sender, el SDK detecta el evento y avisa al humano.
+            // Se envía al sender (el agente) para que el dueño la apruebe luego
             transfer::public_transfer(request, tx_context::sender(ctx));
 
             event::emit(ApprovalNeeded {
                 request_id: req_id,
                 agent_id: budget.agent_id,
                 amount_sui,
-                amount_usd: usd_value
+                amount_usd: usd_value,
+                inference_hash // Emitimos para indexadores
             });
 
             return false // Detener ejecución automática
@@ -153,20 +154,20 @@ module kinetis_core::financial_rules {
     }
 
     /**
-     * [NUEVO] Función para el HUMANO.
-     * El Admin revisa la SpendingRequest y la aprueba explícitamente.
-     * Retorna un "FinanceApproval" (Hot Potato) que se debe usar en execution_layer.
+     * Función para el HUMANO.
+     * Aprueba la solicitud y pasa el hash a la 'FinanceApproval'.
      */
     public fun approve_spend_request(
-        _admin: &AgentAdminCap, // Requiere ser Admin
+        _admin: &AgentAdminCap, 
         budget: &mut BudgetConfig,
-        request: SpendingRequest // Consume la solicitud (la quema)
+        request: SpendingRequest 
     ): FinanceApproval {
         
-        let SpendingRequest { id, agent_id, amount_sui, amount_usd_estimated, timestamp: _ } = request;
-        object::delete(id); // Borramos el objeto de solicitud
+        // Desempaquetamos incluyendo el hash
+        let SpendingRequest { id, agent_id, amount_sui, amount_usd_estimated, inference_hash, timestamp: _ } = request;
+        object::delete(id); 
 
-        // Actualizamos el gasto acumulado (aunque se pase del límite, porque es manual)
+        // Actualizamos gasto
         budget.current_spend_usd = budget.current_spend_usd + amount_usd_estimated;
 
         event::emit(SpendRecorded { 
@@ -175,20 +176,24 @@ module kinetis_core::financial_rules {
             amount_usd: amount_usd_estimated 
         });
 
-        // Retornamos la prueba de aprobación
+        // Retornamos la prueba de aprobación CON el hash original
         FinanceApproval {
             agent_id,
             amount_sui,
-            amount_usd: amount_usd_estimated
+            amount_usd: amount_usd_estimated,
+            inference_hash // <--- Mantenemos la cadena de custodia
         }
     }
 
     /**
-     * Helper para destruir el Hot Potato una vez usado en execution_layer
+     * Helper para destruir el Hot Potato.
+     * [MODIFICADO] Ahora retorna el hash para que execution_layer lo use.
      */
-    public fun burn_approval(approval: FinanceApproval) {
-        let FinanceApproval { agent_id: _, amount_sui: _, amount_usd: _ } = approval;
-        // Simplemente se deshace de ella.
+    public fun burn_approval(approval: FinanceApproval): vector<u8> {
+        let FinanceApproval { agent_id: _, amount_sui: _, amount_usd: _, inference_hash } = approval;
+        
+        // Retornamos el hash para el evento final
+        inference_hash
     }
 
     // --- Helpers Privados ---
