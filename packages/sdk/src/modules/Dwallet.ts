@@ -151,17 +151,12 @@ export class DWalletModule {
         // 1. Casteamos a 'any' para acceder a los índices sin errores de TS
         const moveCallResult = dwalletCap as any;
 
-        console.log("  -> [INFO] Transfiriendo Resultados (Cap + Cambio IKA + Cambio SUI) a la wallet...");
-        
+        console.log("  -> [INFO] Transfiriendo DWalletCap (Index 0) a la wallet...");        
         // 2. Transferimos los 3 resultados explícitamente:
         // [0] = DWalletCap (Lo que queremos)
-        // [1] = Cambio de IKA
         
         // Transferimos SOLO lo que existe:
-        tx.transferObjects(
-            [moveCallResult[0], moveCallResult[1]], 
-            tx.pure.address(userAddress)
-        );
+        tx.transferObjects([moveCallResult[0]], tx.pure.address(userAddress));
 
         // 5. Ejecución
         console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
