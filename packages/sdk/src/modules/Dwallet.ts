@@ -79,8 +79,8 @@ export class DWalletModule {
             sessionId,      // bytesToHash
             userAddress     // senderAddress
         );
-        // 4. Construcción de Transacción
-        console.log("📝 Construyendo transacción en Sui...");
+        // 4. Construcción de Transacción con LOGS CORREGIDOS
+        console.log("\n📝 [DEBUG] --- INICIO CONSTRUCCIÓN DE TRANSACCIÓN ---");
         const tx = new Transaction();
         const ikaTx = new IkaTransaction({
             ikaClient: this.ikaClient,
@@ -88,37 +88,62 @@ export class DWalletModule {
             userShareEncryptionKeys: userKeys
         });
 
+        // 1. Session ID (Es un Objeto de Transacción, no bytes)
         const sessionIdentifier = ikaTx.createSessionIdentifier();
+        console.log(`  -> [DEBUG] Session ID Objeto creado (Ref Transaction).`);
+
+        // 2. Network Key
         const networkEncryptionKey = await this.ikaClient.getLatestNetworkEncryptionKey();
-        
-        // --- INICIO DE CORRECCIONES ---
+        console.log(`  -> [DEBUG] Network Key ID: ${networkEncryptionKey.id}`);
 
-        // A. Preparar IKA Coin
-        // En lugar de enviar la moneda entera (que podría fallar si es muy grande),
-        // es mejor práctica si Ika consume la moneda. Pero por ahora, usaremos el objeto directo.
+        // 3. Preparar IKA Coin
         const ikaCoinId = await this.findIkaCoin(userAddress);
-        if (!ikaCoinId) throw new Error("❌ Error: No tienes tokens IKA.");
+        console.log(`  -> [DEBUG] IKA Coin ID encontrado: ${ikaCoinId}`);
         
-        // B. Preparar SUI Coin (CORRECCIÓN DEL ERROR TypeMismatch)
-        // El error ocurría porque 'splitCoins' devuelve un resultado que debe ser desestructurado
-        // para obtener la referencia exacta a la nueva moneda creada.
-        // Además, usamos tx.pure.u64 para asegurar que el número sea entendido como u64 por Move.
-        const [suiFeeCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(50_000_000)]); // 0.05 SUI
+        if (!ikaCoinId) {
+            console.error("  -> [ERROR] No se encontró moneda IKA en la wallet.");
+            throw new Error("❌ Error: No tienes tokens IKA.");
+        }
 
-        // Llamada corregida
+        // Split de IKA
+        const IKA_AMOUNT = 1_000_000_000; 
+        console.log(`  -> [DEBUG] Preparando Split de IKA Coin. Monto: ${IKA_AMOUNT}`);
+        
+        const ikaOriginCoin = tx.object(ikaCoinId);
+        const [ikaPaymentCoin] = tx.splitCoins(ikaOriginCoin, [tx.pure.u64(IKA_AMOUNT)]);
+
+        // 4. Preparar SUI Coin
+        const SUI_AMOUNT = 50_000_000; // 0.05 SUI
+        console.log(`  -> [DEBUG] Preparando Split de SUI Coin. Monto: ${SUI_AMOUNT}`);
+        const [suiPaymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(SUI_AMOUNT)]);
+
+        // 5. Verificación de Inputs DKG (Con nombres corregidos)
+        console.log("  -> [DEBUG] Verificando DKG Request Input:");
+        // Imprimimos las llaves para confirmar qué propiedades tiene el objeto real
+        console.log(`      - Propiedades disponibles: ${Object.keys(dkgRequestInput).join(', ')}`);
+        
+        // Usamos la notación de corchetes ['propiedad'] o 'as any' para evitar error de TS si la definición difiere,
+        // pero usamos los nombres que confirmaste.
+        const inputAny = dkgRequestInput as any;
+        if (inputAny.userDKGMessage) console.log(`      - userDKGMessage length: ${inputAny.userDKGMessage.length}`);
+        if (inputAny.userPublicOutput) console.log(`      - userPublicOutput length: ${inputAny.userPublicOutput.length}`);
+
+        // 6. La Llamada Crítica
+        console.log("  -> [DEBUG] Llamando a 'ikaTx.requestDWalletDKG'...");
+        
         const dwalletCap = await ikaTx.requestDWalletDKG({
             dkgRequestInput: dkgRequestInput,
             sessionIdentifier: sessionIdentifier,
             dwalletNetworkEncryptionKeyId: networkEncryptionKey.id,
             curve: curve, 
-            ikaCoin: tx.object(ikaCoinId), // Pasamos la referencia al objeto IKA
-            suiCoin: suiFeeCoin,           // Pasamos la moneda SUI recién creada y separada
+            ikaCoin: ikaPaymentCoin, 
+            suiCoin: suiPaymentCoin, 
         });
-
-        // --- FIN DE CORRECCIONES ---
         
+        console.log("  -> [DEBUG] MoveCall agregado correctamente.");
         tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
-
+        console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
+        
         // 5. Ejecución
         console.log("🚀 Enviando transacción...");
         const result = await this.client.signAndExecuteTransaction({
