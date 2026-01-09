@@ -156,9 +156,10 @@ export class DWalletModule {
         // 2. Transferimos los 3 resultados explícitamente:
         // [0] = DWalletCap (Lo que queremos)
         // [1] = Cambio de IKA
-        // [2] = Cambio de SUI
+        
+        // Transferimos SOLO lo que existe:
         tx.transferObjects(
-            [moveCallResult[0], moveCallResult[1], moveCallResult[2]], 
+            [moveCallResult[0], moveCallResult[1]], 
             tx.pure.address(userAddress)
         );
 
