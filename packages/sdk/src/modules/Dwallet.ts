@@ -140,37 +140,46 @@ export class DWalletModule {
             suiCoin: suiPaymentCoin, 
         });
         
-        console.log("  -> [DEBUG] MoveCall agregado correctamente.");
+        // ... (código anterior: requestDWalletDKG) ...
 
         console.log("  -> [DEBUG] MoveCall agregado correctamente.");
 
-        // --- CORRECCIÓN DEFINITIVA ---
-        console.log("  -> [INFO] Transfiriendo dWalletCap y cambio a la wallet...");
-        tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
-        console.log("  -> [INFO] Devolviendo cambio de monedas a la wallet...");
-        tx.transferObjects([ikaPaymentCoin, suiPaymentCoin], tx.pure.address(userAddress));
+        // --- CORRECCIÓN FINAL: DESEMPAQUETADO DE TUPLA ---
+        // La función de Move devuelve 3 cosas: (DWalletCap, IkaChange, SuiChange).
+        // El objeto 'dwalletCap' en JS contiene referencias a esas 3 cosas.
+        
+        // 1. Casteamos a 'any' para acceder a los índices sin errores de TS
+        const moveCallResult = dwalletCap as any;
+
+        console.log("  -> [INFO] Transfiriendo Resultados (Cap + Cambio IKA + Cambio SUI) a la wallet...");
+        
+        // 2. Transferimos los 3 resultados explícitamente:
+        // [0] = DWalletCap (Lo que queremos)
+        // [1] = Cambio de IKA
+        // [2] = Cambio de SUI
+        tx.transferObjects(
+            [moveCallResult[0], moveCallResult[1], moveCallResult[2]], 
+            tx.pure.address(userAddress)
+        );
 
         // 5. Ejecución
         console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
         console.log("🚀 Enviando transacción...");
         
-        // 5. Ejecución
-        console.log("🚀 Enviando transacción...");
-        const result = await this.client.signAndExecuteTransaction({
+        const executeResult = await this.client.signAndExecuteTransaction({
             signer: signerKeypair,
             transaction: tx,
             options: { showEffects: true, showObjectChanges: true },
         });
 
-        await this.client.waitForTransaction({ digest: result.digest });
+        console.log(`⏳ Esperando confirmación... Digest: ${executeResult.digest}`);
+        await this.client.waitForTransaction({ digest: executeResult.digest });
 
         // 6. Extracción de Resultados
         let dWalletId = "";
-        result.objectChanges?.forEach((change) => {
-            // PASO 1: "Type Guard". Primero filtramos por tipo.
-            // TypeScript ahora sabe que dentro de este IF, 'change' tiene las propiedades correctas.
+        executeResult.objectChanges?.forEach((change) => {
             if (change.type === 'created') {
-                // PASO 2: Ahora es seguro acceder a 'objectType' y 'objectId'
+                // Buscamos el objeto específico de la dWallet
                 if (change.objectType.includes('dwallet::DWallet')) {
                     dWalletId = change.objectId;
                 }
@@ -178,7 +187,9 @@ export class DWalletModule {
         });
 
         if (!dWalletId) {
-            throw new Error(`⚠️ Transacción confirmada pero no se encontró dWallet ID. Digest: ${result.digest}`);
+            // Si llegamos aquí, revisa los logs, puede que el objeto tenga otro nombre
+            console.log("⚠️ DEBUG OBJECT CHANGES:", JSON.stringify(executeResult.objectChanges, null, 2));
+            throw new Error(`⚠️ Transacción confirmada pero no se encontró dWallet ID. Digest: ${executeResult.digest}`);
         }
 
         console.log(`✅ dWallet Creada: ${dWalletId}`);
@@ -188,7 +199,8 @@ export class DWalletModule {
         const publicKeyHex = await this.getDWalletPublicKey(dWalletId, curve);
         console.log(`🔑 Public Key: ${publicKeyHex}`);
 
-        return { dWalletId, seed: seedKey, publicKeyHex };
+        return { dWalletId, seed: seedKey, publicKeyHex };      
+        
     }
 
     async getDWalletPublicKey(dWalletId: string, curve: Curve = Curve.SECP256K1): Promise<string> {
