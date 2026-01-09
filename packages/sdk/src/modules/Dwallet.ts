@@ -142,16 +142,19 @@ export class DWalletModule {
         
         console.log("  -> [DEBUG] MoveCall agregado correctamente.");
 
-        // --- CORRECCIÓN: RESTAURAR TRANSFERENCIA ---
-        // El error UnusedValueWithoutDrop confirma que SÍ recibimos un objeto.
-        // Debemos enviarlo a tu wallet para no perderlo.
+        console.log("  -> [DEBUG] MoveCall agregado correctamente.");
+
+        // --- CORRECCIÓN DEFINITIVA ---
+        // 1. NO transferimos dwalletCap porque la función no devuelve nada (InvalidResultArity).
+        // 2. SÍ transferimos las monedas de pago de vuelta a nosotros.
+        //    Esto soluciona el "UnusedValueWithoutDrop" (que se quejaba de que suiPaymentCoin quedó huérfana).
         
-        tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
-        
-        console.log("  -> [DEBUG] Transferencia de DWalletCap añadida.");
+        console.log("  -> [INFO] Devolviendo cambio de monedas a la wallet...");
+        tx.transferObjects([ikaPaymentCoin, suiPaymentCoin], tx.pure.address(userAddress));
 
         // 5. Ejecución
         console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
+        console.log("🚀 Enviando transacción...");
         
         // 5. Ejecución
         console.log("🚀 Enviando transacción...");
