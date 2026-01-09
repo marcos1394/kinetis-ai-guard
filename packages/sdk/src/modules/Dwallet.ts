@@ -141,7 +141,6 @@ export class DWalletModule {
         });
         
         console.log("  -> [DEBUG] MoveCall agregado correctamente.");
-        tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
         console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
         
         // 5. Ejecución
