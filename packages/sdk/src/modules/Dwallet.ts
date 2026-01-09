@@ -163,7 +163,7 @@ export class DWalletModule {
         
         // Transferimos índice 0 (Cap), 1 (Cambio IKA) y 2 (Cambio SUI)
         tx.transferObjects(
-            [result[0], result[1], result[2]], 
+            [result[0], result[1]], 
             tx.pure.address(userAddress)
         );
        
