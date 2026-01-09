@@ -141,6 +141,16 @@ export class DWalletModule {
         });
         
         console.log("  -> [DEBUG] MoveCall agregado correctamente.");
+
+        // --- CORRECCIÓN: RESTAURAR TRANSFERENCIA ---
+        // El error UnusedValueWithoutDrop confirma que SÍ recibimos un objeto.
+        // Debemos enviarlo a tu wallet para no perderlo.
+        
+        tx.transferObjects([dwalletCap], tx.pure.address(userAddress));
+        
+        console.log("  -> [DEBUG] Transferencia de DWalletCap añadida.");
+
+        // 5. Ejecución
         console.log("📝 [DEBUG] --- FIN CONSTRUCCIÓN ---");
         
         // 5. Ejecución
