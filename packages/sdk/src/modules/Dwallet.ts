@@ -214,13 +214,19 @@ export class DWalletModule {
         let cursor = null;
         let hasNext = true;
         
+        // ID DEL TOKEN OFICIAL QUE ENCONTRAMOS EN TU WALLET
+        const OFFICIAL_IKA_TYPE = "0x1f26bb2f711ff82dcda4d02c77d5123089cb7f8418751474b9fb744ce031526a::ika::IKA";
+
+        console.log(`🔎 Buscando IKA Oficial (${OFFICIAL_IKA_TYPE.slice(0, 10)}...)...`);
+
         while (hasNext) {
-            // --- CORRECCIÓN DE VARIABLE AQUÍ ---
-            // Renombramos 'coins' a 'coinPage' para evitar errores de referencia cíclica
             const coinPage = await this.client.getAllCoins({ owner, cursor });
             
             for (const coin of coinPage.data) {
-                if (coin.coinType !== "0x2::sui::SUI" && parseInt(coin.balance) > 0) {
+                // Verificamos si es EXACTAMENTE el tipo oficial
+                if (coin.coinType === OFFICIAL_IKA_TYPE && parseInt(coin.balance) > 0) {
+                    console.log(`   ✅ ENCONTRADO: IKA Oficial (Balance: ${coin.balance})`);
+                    console.log(`      ObjectID: ${coin.coinObjectId}`);
                     return coin.coinObjectId;
                 }
             }
@@ -228,6 +234,8 @@ export class DWalletModule {
             if (!coinPage.hasNextPage) break;
             cursor = coinPage.nextCursor;
         }
+        
+        console.error("❌ No se encontró el token IKA Oficial. Asegúrate de tener saldo del faucet.");
         return null;
     }
 }
